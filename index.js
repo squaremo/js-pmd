@@ -78,14 +78,31 @@ function procedure(name) {
     var selector = gensym(name); // possibly gensym name, or fully qualify it, or ..
     var METHODS = {};
 
+    var STRINGS = {};
+
+    function get_table(value, create) {
+        switch (typeof value) {
+        case 'string':
+            if (value in STRINGS) {
+                return STRINGS[value];
+            }
+            else {
+                return (create) ? STRINGS[value] = {} : false;
+            }
+        default:
+            // %% defineProperty
+            if (!value.__roles__) value.__roles__ = {};
+            return value.__roles__;
+        }
+    }
+
     function method(/* object 1..n, bodyFn*/) {
         var methodname = gensym(name);
         var body = arguments[arguments.length-1];
         for (var i = 0, len = arguments.length-1; i < len; i++) {
             var arg = arguments[i];
             var rolename = selector + ':' + i;
-            if (!arg.__roles__) arg.__roles__ = {};
-            var table = arg.__roles__;
+            var table = get_table(arg, true);
             if (!table[rolename]) table[rolename] = [];
             table[rolename].push(methodname);
         }
@@ -105,7 +122,8 @@ function procedure(name) {
             while (stack.length > 0) {
                 var arg = stack.pop();
                 var methods;
-                if (arg.__roles && (methods = arg.__roles[rolename])) {
+                var table = get_table(arg, false);
+                if (table && (methods = table[rolename])) {
                     methods.forEach(function (methodname) {
                         var rank;
                         if (!(rank = ranks[methodname])) {
@@ -119,7 +137,7 @@ function procedure(name) {
                         rank.filled++;
                         if (!mostspecificmethod ||
                             (rank.filled === len &&
-                             rank.vector > ranks[mostspecificmethod].vector)) {
+                             rank.vector < ranks[mostspecificmethod].vector)) {
                             mostspecificmethod = methodname;
                         }
                     });
@@ -139,7 +157,7 @@ function procedure(name) {
                 position++;
             }
         }
-        console.log({ranks: ranks});
+        console.log(ranks);
         return METHODS[mostspecificmethod];
     }
     
