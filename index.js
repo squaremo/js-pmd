@@ -92,6 +92,10 @@ function procedure(name) {
     var METHODS = {};
 
     var STRINGS = {};
+    var NUMBERS = {};
+    var TRUE_TABLE = {};
+    var FALSE_TABLE = {};
+    var NULL_TABLE = {};
 
     function get_table(value, create) {
         switch (typeof value) {
@@ -102,11 +106,25 @@ function procedure(name) {
             else {
                 return (create) ? STRINGS[value] = {} : false;
             }
-            // %%% Number etc.
-        default:
-            // %% check if null
+        case 'number':
+            if (value in NUMBERS) {
+                return NUMBERS[value];
+            }
+            else {
+                return (create) ? NUMBERS[value] = {} : false;
+            }
+        case 'boolean':
+            return value && TRUE_TABLE || FALSE_TABLE;
+        default: // Object, Array, RegExp, Function
+            if (value === null) {
+                return NULL_TABLE;
+            }
             // %% defineProperty
-            if (create && !value.__roles__) value.__roles__ = {};
+            var hasRoles = value.hasOwnProperty('__roles__');
+            if (create && !hasRoles) {
+                Object.defineProperty(value, '__roles__',
+                                      {value: {}, enumerable: false});
+            }
             return value.__roles__;
         }
     }
@@ -118,6 +136,7 @@ function procedure(name) {
             var arg = arguments[i];
             var rolename = selector + ':' + i;
             var table = get_table(arg, true);
+            console.log({TABLE: table});
             if (!table[rolename]) table[rolename] = [];
             table[rolename].push(methodname);
         }
@@ -155,8 +174,8 @@ function procedure(name) {
                         rank.vector[i] = position;
                         // store the fullness in the index after the last arg
                         rank.filled++;
-                        if (!mostspecificmethod ||
-                            (rank.filled === len &&
+                        if (rank.filled === len &&
+                            (!mostspecificmethod ||
                              rank.vector < ranks[mostspecificmethod].vector)) {
                             mostspecificmethod = methodname;
                         }
