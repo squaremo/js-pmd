@@ -1,5 +1,7 @@
 // Slate-like multimethod dispatch
 
+// From the paper:
+
 // The rule R-Lookup is a straight-forward transcription of the idea
 // of multiple dispatch. It states that a method body should be
 // dispatched if it is applicable - a member of the set of applicable
@@ -36,7 +38,7 @@ dispatch(selector, args, n) {
                     or rank[role’s method] ≺ rank[most specific method] {
                         most specific method := role’s method
                     }
-}
+                }
             }
             for each delegation on arg {
                 push delegation on ordering stack if not yet visited
@@ -47,6 +49,7 @@ dispatch(selector, args, n) {
     return most specific method
 }
 */
+
 
 // Here role means position in arguments; since methods are
 // internalised at objects, it makes sense to look at all the
@@ -74,6 +77,16 @@ function gensym(name) {
     return name + '_' + (gensym_counter++);
 }
 
+// JavaScript's delegation chains don't have the same root; we'll
+// substitute our own, for the convenience of defining methods with
+// discard (unused) arguments, and also so we can potentially do some
+// of the optimisations described in the PMD paper (specifically
+// sparse rank vectors and partial dispatch).
+//
+// This ends up being a special-case in the delegation chain code.
+function ANY() {}
+ANY.prototype = {};
+
 function procedure(name) {
     var selector = gensym(name); // possibly gensym name, or fully qualify it, or ..
     var METHODS = {};
@@ -89,9 +102,11 @@ function procedure(name) {
             else {
                 return (create) ? STRINGS[value] = {} : false;
             }
+            // %%% Number etc.
         default:
+            // %% check if null
             // %% defineProperty
-            if (!value.__roles__) value.__roles__ = {};
+            if (create && !value.__roles__) value.__roles__ = {};
             return value.__roles__;
         }
     }
@@ -111,16 +126,21 @@ function procedure(name) {
 
     function lookup(args) {
         var ranks = {};
+        // %% since we only have one delegate at any point, this could
+        // %% be a register.
         var stack = [];
         var mostspecificmethod;
 
         for (var i=0, len = args.length; i < len; i++) {
             var position = 0;
             var rolename = selector + ':' + i;
-            stack.push(args[i]);
-            console.log({ARG: args[i]});
-            while (stack.length > 0) {
-                var arg = stack.pop();
+            var n = 0;
+            stack.push({isValue: true, arg: args[i]});
+            while (stack.length > 0 && n < 10) {
+                n++;
+                var _a = stack.pop();
+                var arg = _a.arg, isValue = _a.isValue;
+                console.log({ARG: arg});
                 var methods;
                 var table = get_table(arg, false);
                 if (table && (methods = table[rolename])) {
@@ -142,18 +162,23 @@ function procedure(name) {
                         }
                     });
                 }
-                var delegate = arg, isCons = false;
-                while (delegate !== Object &&
-                       delegate !== Array &&
-                       delegate !== Number &&
-                       delegate !== String &&
-                       delegate !== Boolean &&
-                       delegate !== RegExp) {
-                    console.log({DELEGATE: delegate});
-                    delegate = (isCons) ? delegate.prototype : delegate.constructor;
-                    stack.push(delegate);
-                    isCons = !isCons;
+
+                // All the top level constructors are their own
+                // prototype's constructor. %% bad shortcut?
+                if (!isValue && arg === arg.prototype.constructor) {
+                    console.log({DELEGATE: 'ANY', isval: false});
+                    stack.push({arg: ANY, isValue: false});
                 }
+                // To pretend that there's a root to the delegation
+                // chain, we treat ANY as the constructor of the real
+                // top-level constructors. If Any is used as a value,
+                // it will go via the chain Any.constructor = Object.
+                else if (arg !== ANY || isValue) {
+                    var delegate = (isValue) ? arg.constructor : arg.prototype;
+                    console.log({DELEGATE: delegate, isval: !isValue});
+                    stack.push({arg: delegate, isValue: !isValue});
+                }
+                console.log({STACK: stack});
                 position++;
             }
         }
@@ -171,3 +196,4 @@ function procedure(name) {
 }
 
 module.exports = procedure;
+module.exports.Any = ANY;
