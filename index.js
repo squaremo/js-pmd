@@ -136,7 +136,7 @@ function procedure(name) {
             var arg = arguments[i];
             var rolename = selector + ':' + i;
             var table = get_table(arg, true);
-            console.log({TABLE: table});
+            //console.log({TABLE: table});
             if (!table[rolename]) table[rolename] = [];
             table[rolename].push(methodname);
         }
@@ -159,7 +159,7 @@ function procedure(name) {
                 n++;
                 var _a = stack.pop();
                 var arg = _a.arg, isValue = _a.isValue;
-                console.log({ARG: arg});
+                //console.log({ARG: arg});
                 var methods;
                 var table = get_table(arg, false);
                 if (table && (methods = table[rolename])) {
@@ -185,7 +185,7 @@ function procedure(name) {
                 // All the top level constructors are their own
                 // prototype's constructor. %% bad shortcut?
                 if (!isValue && arg === arg.prototype.constructor) {
-                    console.log({DELEGATE: 'ANY', isval: false});
+                    //console.log({DELEGATE: 'ANY', isval: false});
                     stack.push({arg: ANY, isValue: false});
                 }
                 // To pretend that there's a root to the delegation
@@ -194,20 +194,20 @@ function procedure(name) {
                 // it will go via the chain Any.constructor = Object.
                 else if (arg !== ANY || isValue) {
                     var delegate = (isValue) ? arg.constructor : arg.prototype;
-                    console.log({DELEGATE: delegate, isval: !isValue});
+                    //console.log({DELEGATE: delegate, isval: !isValue});
                     stack.push({arg: delegate, isValue: !isValue});
                 }
-                console.log({STACK: stack});
+                //console.log({STACK: stack});
                 position++;
             }
         }
-        console.log(ranks);
+        //console.log(ranks);
         return METHODS[mostspecificmethod];
     }
     
     var dispatch = function() {
         var method = lookup(arguments);
-        if (method) { return method.call(method, arguments); }
+        if (method) { return method.apply(method, arguments); }
         else throw "No applicable method found";
     }
     dispatch.method = method;
