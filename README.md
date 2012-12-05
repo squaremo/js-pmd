@@ -43,3 +43,8 @@ In JavaScript, delegation is through the object constructor's
 `prototype` property. This conveniently gives us the ability to
 specialise on types (the constructors) or values (the arguments
 themselves and constructor prototypes).
+
+JavaScript's built-in constructors don't have a common ancestor; for
+this reason I introduced an `Any` constructor to act as a top type
+(i.e., it accepts any value). This makes defining methods with unused
+arguments easier and admits some optimisations described in the paper.
