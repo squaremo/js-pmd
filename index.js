@@ -72,147 +72,150 @@ dispatch(selector, args, n) {
 
 'use strict';
 
-var gensym_counter = 0;
-function gensym(name) {
-    return name + '_' + (gensym_counter++);
-}
-
-// JavaScript's delegation chains don't have the same root; we'll
-// substitute our own, for the convenience of defining methods with
-// discard (unused) arguments, and also so we can potentially do some
-// of the optimisations described in the PMD paper (specifically
-// sparse rank vectors and partial dispatch).
-//
-// This ends up being a special-case in the delegation chain code.
-function ANY() {}
-ANY.prototype = {};
-
-function procedure(name) {
-    var selector = gensym(name); // possibly gensym name, or fully qualify it, or ..
-    var METHODS = {};
-
-    var STRINGS = {};
-    var NUMBERS = {};
-    var TRUE_TABLE = {};
-    var FALSE_TABLE = {};
-    var NULL_TABLE = {};
-
-    function get_table(value, create) {
-        switch (typeof value) {
-        case 'string':
-            if (value in STRINGS) {
-                return STRINGS[value];
-            }
-            else {
-                return (create) ? STRINGS[value] = {} : false;
-            }
-        case 'number':
-            if (value in NUMBERS) {
-                return NUMBERS[value];
-            }
-            else {
-                return (create) ? NUMBERS[value] = {} : false;
-            }
-        case 'boolean':
-            return value && TRUE_TABLE || FALSE_TABLE;
-        default: // Object, Array, RegExp, Function
-            if (value === null) {
-                return NULL_TABLE;
-            }
-            // %% defineProperty
-            var hasRoles = value.hasOwnProperty('__roles__');
-            if (create && !hasRoles) {
-                Object.defineProperty(value, '__roles__',
-                                      {value: {}, enumerable: false});
-            }
-            return value.__roles__;
-        }
+(function() {
+    var gensym_counter = 0;
+    function gensym(name) {
+        return name + '_' + (gensym_counter++);
     }
 
-    function method(/* object 1..n, bodyFn*/) {
-        var methodname = gensym(name);
-        var body = arguments[arguments.length-1];
-        for (var i = 0, len = arguments.length-1; i < len; i++) {
-            var arg = arguments[i];
-            var rolename = selector + ':' + i;
-            var table = get_table(arg, true);
-            //console.log({TABLE: table});
-            if (!table[rolename]) table[rolename] = [];
-            table[rolename].push(methodname);
-        }
-        METHODS[methodname] = body;
-    }
+    // JavaScript's delegation chains don't have the same root; we'll
+    // substitute our own, for the convenience of defining methods with
+    // discard (unused) arguments, and also so we can potentially do some
+    // of the optimisations described in the PMD paper (specifically
+    // sparse rank vectors and partial dispatch).
+    //
+    // This ends up being a special-case in the delegation chain code.
+    function ANY() {}
+    ANY.prototype = {};
 
-    function lookup(args) {
-        var ranks = {};
-        // %% since we only have one delegate at any point, this could
-        // %% be a register.
-        var stack = [];
-        var mostspecificmethod;
+    function procedure(name) {
+        var selector = gensym(name); // possibly gensym name, or fully qualify it, or ..
+        var METHODS = {};
 
-        for (var i=0, len = args.length; i < len; i++) {
-            var position = 0;
-            var rolename = selector + ':' + i;
-            var n = 0;
-            stack.push({isValue: true, arg: args[i]});
-            while (stack.length > 0 && n < 10) {
-                n++;
-                var _a = stack.pop();
-                var arg = _a.arg, isValue = _a.isValue;
-                //console.log({ARG: arg});
-                var methods;
-                var table = get_table(arg, false);
-                if (table && (methods = table[rolename])) {
-                    methods.forEach(function (methodname) {
-                        var rank;
-                        if (!(rank = ranks[methodname])) {
-                            rank = ranks[methodname] = {
-                                filled: 0,
-                                vector: []
-                            };
-                        }
-                        rank.vector[i] = position;
-                        // store the fullness in the index after the last arg
-                        rank.filled++;
-                        if (rank.filled === len &&
-                            (!mostspecificmethod ||
-                             rank.vector < ranks[mostspecificmethod].vector)) {
-                            mostspecificmethod = methodname;
-                        }
-                    });
-                }
+        var STRINGS = {};
+        var NUMBERS = {};
+        var TRUE_TABLE = {};
+        var FALSE_TABLE = {};
+        var NULL_TABLE = {};
 
-                // All the top level constructors are their own
-                // prototype's constructor. %% bad shortcut?
-                if (!isValue && arg === arg.prototype.constructor) {
-                    //console.log({DELEGATE: 'ANY', isval: false});
-                    stack.push({arg: ANY, isValue: false});
+        function get_table(value, create) {
+            switch (typeof value) {
+            case 'string':
+                if (value in STRINGS) {
+                    return STRINGS[value];
                 }
-                // To pretend that there's a root to the delegation
-                // chain, we treat ANY as the constructor of the real
-                // top-level constructors. If Any is used as a value,
-                // it will go via the chain Any.constructor = Object.
-                else if (arg !== ANY || isValue) {
-                    var delegate = (isValue) ? arg.constructor : arg.prototype;
-                    //console.log({DELEGATE: delegate, isval: !isValue});
-                    stack.push({arg: delegate, isValue: !isValue});
+                else {
+                    return (create) ? STRINGS[value] = {} : false;
                 }
-                //console.log({STACK: stack});
-                position++;
+            case 'number':
+                if (value in NUMBERS) {
+                    return NUMBERS[value];
+                }
+                else {
+                    return (create) ? NUMBERS[value] = {} : false;
+                }
+            case 'boolean':
+                return value && TRUE_TABLE || FALSE_TABLE;
+            default: // Object, Array, RegExp, Function
+                if (value === null) {
+                    return NULL_TABLE;
+                }
+                // %% defineProperty
+                var hasRoles = value.hasOwnProperty('__roles__');
+                if (create && !hasRoles) {
+                    Object.defineProperty(value, '__roles__',
+                                          {value: {}, enumerable: false});
+                }
+                return value.__roles__;
             }
         }
-        //console.log(ranks);
-        return METHODS[mostspecificmethod];
-    }
-    
-    var dispatch = function() {
-        var method = lookup(arguments);
-        if (method) { return method.apply(method, arguments); }
-        else throw "No applicable method found";
-    }
-    dispatch.method = method;
-    return dispatch;
-}
 
-module.exports = procedure;
-module.exports.Any = ANY;
+        function method(/* object 1..n, bodyFn*/) {
+            var methodname = gensym(name);
+            var body = arguments[arguments.length-1];
+            for (var i = 0, len = arguments.length-1; i < len; i++) {
+                var arg = arguments[i];
+                var rolename = selector + ':' + i;
+                var table = get_table(arg, true);
+                //console.log({TABLE: table});
+                if (!table[rolename]) table[rolename] = [];
+                table[rolename].push(methodname);
+            }
+            METHODS[methodname] = body;
+        }
+
+        function lookup(args) {
+            var ranks = {};
+            // %% since we only have one delegate at any point, this could
+            // %% be a register.
+            var stack = [];
+            var mostspecificmethod;
+
+            for (var i=0, len = args.length; i < len; i++) {
+                var position = 0;
+                var rolename = selector + ':' + i;
+                var n = 0;
+                stack.push({isValue: true, arg: args[i]});
+                while (stack.length > 0 && n < 10) {
+                    n++;
+                    var _a = stack.pop();
+                    var arg = _a.arg, isValue = _a.isValue;
+                    //console.log({ARG: arg});
+                    var methods;
+                    var table = get_table(arg, false);
+                    if (table && (methods = table[rolename])) {
+                        methods.forEach(function (methodname) {
+                            var rank;
+                            if (!(rank = ranks[methodname])) {
+                                rank = ranks[methodname] = {
+                                    filled: 0,
+                                    vector: []
+                                };
+                            }
+                            rank.vector[i] = position;
+                            // store the fullness in the index after the last arg
+                            rank.filled++;
+                            if (rank.filled === len &&
+                                (!mostspecificmethod ||
+                                 rank.vector < ranks[mostspecificmethod].vector)) {
+                                mostspecificmethod = methodname;
+                            }
+                        });
+                    }
+
+                    // All the top level constructors are their own
+                    // prototype's constructor. %% bad shortcut?
+                    if (!isValue && arg === arg.prototype.constructor) {
+                        //console.log({DELEGATE: 'ANY', isval: false});
+                        stack.push({arg: ANY, isValue: false});
+                    }
+                    // To pretend that there's a root to the delegation
+                    // chain, we treat ANY as the constructor of the real
+                    // top-level constructors. If Any is used as a value,
+                    // it will go via the chain Any.constructor = Object.
+                    else if (arg !== ANY || isValue) {
+                        var delegate = (isValue) ? arg.constructor : arg.prototype;
+                        //console.log({DELEGATE: delegate, isval: !isValue});
+                        stack.push({arg: delegate, isValue: !isValue});
+                    }
+                    //console.log({STACK: stack});
+                    position++;
+                }
+            }
+            //console.log(ranks);
+            return METHODS[mostspecificmethod];
+        }
+        
+        var dispatch = function() {
+            var method = lookup(arguments);
+            if (method) { return method.apply(method, arguments); }
+            else throw "No applicable method found";
+        }
+        dispatch.method = method;
+        return dispatch;
+    }
+
+    procedure.Any = ANY;
+    (typeof window !== 'undefined') ? window.procedure = procedure : module.exports = procedure;
+
+})();
