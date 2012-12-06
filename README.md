@@ -33,8 +33,9 @@ print(true);
 
 The model given in the paper is parameterised on two operators and one
 function. One operator determines how to construct a rank for a method
-and another determine how these are ordered. I follow a Slate in
-ordering rank vectors lexically.
+and another determine how these are ordered. I follow Slate in
+constructing vectors from the argument ranking and ordering them
+lexically.
 
 The function `delegates` in the model produces a list of the delegates
 of an object, and this is where it must be adapted to JavaScript.
