@@ -58,17 +58,29 @@ dispatch(selector, args, n) {
 
 // JavaScript isn't used in the same way as say, Self; objects are
 // created using constructor functions, and delegate using the
-// (single) prototype slot *of the constructor*. We'll follow the
-// delegation chain
+// (single) prototype slot *of the constructor function*, *at the time
+// of construction*. This is non-standardly supplied as the __proto__
+// property of a value. To allow both values and constructors in
+// specialisations, we follow the delegation chain:
 
-//     object -> object.constructor -> object.constructor.prototype
+//     value -> value.__proto__
 
-// We keep a table of selector -> position -> methods at
-// each object. While dispatching, we have to keep track of the rank
-// vector of each method; to keep this as local state we gensym a
-// string to be used in the hash table. This also avoids conflicts
-// that might arise if, for instance, a function value was used as the
-// body for more than one method.
+// In general, we'll want to use constructor functions (e.g.,
+// `HTMLElement`) to stand in for types; however, following
+// `value.constructor` will not in general yield the expected
+// delegation chain. For this reason, if a function is given in a
+// method definition, we assume it is intended as a 'type' and
+// implicitly use its prototype -- which _will_ in general work as
+// expected.
+
+// `Object.prototype` is the root of the prototype chain; its [[prototype]] is null.
+
+// We keep a table of role -> methods at each object. While
+// dispatching, we have to keep track of the rank vector of each
+// method; to keep this as local state we gensym a string to be used
+// in the hash table. This also avoids conflicts that might arise if,
+// for instance, a function value was used as the body for more than
+// one method.
 
 'use strict';
 
@@ -78,20 +90,25 @@ dispatch(selector, args, n) {
         return name + '_' + (gensym_counter++);
     }
 
-    // JavaScript's delegation chains don't have the same root; we'll
-    // substitute our own, for the convenience of defining methods with
-    // discard (unused) arguments, and also so we can potentially do some
-    // of the optimisations described in the PMD paper (specifically
-    // sparse rank vectors and partial dispatch).
-    //
-    // This ends up being a special-case in the delegation chain code.
-    function ANY() {}
-    ANY.prototype = {};
+    // Object.getPrototypeOf will fail for a ground type, so we
+    // promote everything to an object.
+    //    val.__proto__ === Object(val).__proto__
+    var delegate = (Object.getPrototypeOf) ?
+        function (v) { return Object.getPrototypeOf(Object(v)); } : function(val) { return val.__proto__; };
 
-    function procedure(name) {
-        var selector = gensym(name); // possibly gensym name, or fully qualify it, or ..
+    function procedure(name) { // name is just for easier debugging if
+                               // we have to inspect roles tables
+        
+        var selector = gensym(name);
+
+        // This will store our method bodies. We need to use strings
+        // to identify them both for debugging, and so that we can use
+        // those strings in hashes while ranking.
         var METHODS = {};
 
+        // We can't just go and add properties to these kinds of
+        // values, so we keep the role tables hashed against their
+        // (unique) reprs in these.
         var STRINGS = {};
         var NUMBERS = {};
         var TRUE_TABLE = {};
@@ -116,11 +133,11 @@ dispatch(selector, args, n) {
                 }
             case 'boolean':
                 return value && TRUE_TABLE || FALSE_TABLE;
-            default: // Object, Array, RegExp, Function
+            default: // Object, Array, RegExp, Function can all have
+                     // arbitrary values
                 if (value === null) {
                     return NULL_TABLE;
                 }
-                // %% defineProperty
                 var hasRoles = value.hasOwnProperty('__roles__');
                 if (create && !hasRoles) {
                     Object.defineProperty(value, '__roles__',
@@ -135,6 +152,7 @@ dispatch(selector, args, n) {
             var body = arguments[arguments.length-1];
             for (var i = 0, len = arguments.length-1; i < len; i++) {
                 var arg = arguments[i];
+                if (typeof arg === 'function') arg = arg.prototype;
                 var rolename = selector + ':' + i;
                 var table = get_table(arg, true);
                 //console.log({TABLE: table});
@@ -146,20 +164,19 @@ dispatch(selector, args, n) {
 
         function lookup(args) {
             var ranks = {};
-            // %% since we only have one delegate at any point, this could
-            // %% be a register.
+            // %% since there's only have one delegate at any point,
+            // %% this could be a register.
             var stack = [];
-            var mostspecificmethod;
+            var mostspecificmethod = false;
 
             for (var i=0, len = args.length; i < len; i++) {
                 var position = 0;
                 var rolename = selector + ':' + i;
-                var n = 0;
-                stack.push({isValue: true, arg: args[i]});
-                while (stack.length > 0 && n < 10) {
-                    n++;
-                    var _a = stack.pop();
-                    var arg = _a.arg, isValue = _a.isValue;
+
+                stack.push(args[i]);
+
+                while (stack.length > 0) {
+                    var arg = stack.pop();
                     //console.log({ARG: arg});
                     var methods;
                     var table = get_table(arg, false);
@@ -173,9 +190,10 @@ dispatch(selector, args, n) {
                                 };
                             }
                             rank.vector[i] = position;
-                            // store the fullness in the index after the last arg
                             rank.filled++;
                             if (rank.filled === len &&
+                                // NB above also checks the method has
+                                // the correct number of args
                                 (!mostspecificmethod ||
                                  rank.vector < ranks[mostspecificmethod].vector)) {
                                 mostspecificmethod = methodname;
@@ -183,22 +201,8 @@ dispatch(selector, args, n) {
                         });
                     }
 
-                    // All the top level constructors are their own
-                    // prototype's constructor. %% bad shortcut?
-                    if (!isValue && arg === arg.prototype.constructor) {
-                        //console.log({DELEGATE: 'ANY', isval: false});
-                        stack.push({arg: ANY, isValue: false});
-                    }
-                    // To pretend that there's a root to the delegation
-                    // chain, we treat ANY as the constructor of the real
-                    // top-level constructors. If Any is used as a value,
-                    // it will go via the chain Any.constructor = Object.
-                    else if (arg !== ANY || isValue) {
-                        var delegate = (isValue) ? arg.constructor : arg.prototype;
-                        //console.log({DELEGATE: delegate, isval: !isValue});
-                        stack.push({arg: delegate, isValue: !isValue});
-                    }
-                    //console.log({STACK: stack});
+                    var proto = delegate(arg);
+                    if (proto !== null) stack.push(proto);
                     position++;
                 }
             }
@@ -215,7 +219,6 @@ dispatch(selector, args, n) {
         return dispatch;
     }
 
-    procedure.Any = ANY;
     (typeof window !== 'undefined') ? window.procedure = procedure : module.exports = procedure;
 
 })();

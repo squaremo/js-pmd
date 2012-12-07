@@ -13,39 +13,48 @@ constructors or values. When invoked, the procedure chooses the most
 specific method given the arguments and applies it.
 
 ```javascript
-var procedure = require('./index'), Any = procedure.Any;
+var procedure = require('./index');
 
 // Create a generic function
 var print = procedure('print');
 
 // Specialise
-print.method(Any, function (a) { return 'ANY:' + a.toString(); });
+print.method(Object, function (a) { return 'ANY: ' + a.toString(); });
 print.method(Number, function (n) { return 'NUM: ' + n; });
 print.method(3, function (three) { return 'MAGIC NUM'; });
 
 // print can be used like a regular function
 print(3);
+// => 'MAGIC NUM'
 print(17);
+// => 'NUM: 17'
 print(true);
+// => 'ANY: true'
 ```
+
+(By the way, the argument to `procedure` is really just to make nicer
+symbols for debugging, but it may become important if the machinery is
+more exposed in the future.)
 
 ## Adaption to JavaScript
 
-The model given in the paper is parameterised on two operators and one
-function. One operator determines how to construct a rank for a method
-and another determine how these are ordered. I follow Slate in
-constructing vectors from the argument ranking and ordering them
-lexically.
+The model given in the paper is parameterised, so that it can be
+adapted to languages other than Slate for which it was designed.
 
-The function `delegates` in the model produces a list of the delegates
-of an object, and this is where it must be adapted to JavaScript.
+One variable is the way in which the most applicable method is chosen
+given a list of arguments. I mimic Slate in ordering methods by the
+'closeness' (least distance in the delegation chain) of the first
+argument, then in the case of a tie, the second argument, and so on.
 
-In JavaScript, delegation is through the object constructor's
-`prototype` property. This conveniently gives us the ability to
-specialise on types (the constructors) or values (the arguments
-themselves and constructor prototypes).
+Another variable is how the delegation chain is determined (this ties
+into the notion of 'closeness' above). In JavaScript, delegation is
+through an object's [[prototype]] (non-standardly available as the
+property `__proto__`). THe [[rototype]] is supplied either as the
+argument to `Object.create(proto)`, or implicitly as the constructor
+function's `prototype` property.
 
-JavaScript's built-in constructors don't have a common ancestor; for
-this reason I introduced an `Any` constructor to act as a top type
-(i.e., it accepts any value). This makes defining methods with unused
-arguments easier and admits some optimisations described in the paper.
+This gives us the ability to specialise on values by using the
+prototypes themselves, or on types by using the `prototype` property
+of the constructor. In general, using `Object.create()` would lead to
+the first kind of specialisation, and using the `new` operator would
+lead to the second.
