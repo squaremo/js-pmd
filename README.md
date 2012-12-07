@@ -49,8 +49,8 @@ argument, then in the case of a tie, the second argument, and so on.
 Another variable is how the delegation chain is determined (this ties
 into the notion of 'closeness' above). In JavaScript, delegation is
 through an object's [[prototype]] (non-standardly available as the
-property `__proto__`). THe [[rototype]] is supplied either as the
-argument to `Object.create(proto)`, or implicitly as the constructor
+property `__proto__`). The [[prototype]] is supplied either as the
+argument to `Object.create(proto)`, or implicitly via the constructor
 function's `prototype` property.
 
 This gives us the ability to specialise on values by using the
