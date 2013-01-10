@@ -6,3 +6,7 @@ print.method('foo', function(s) { console.log( "foo!" ); });
 print("foo");
 print.method(Object, function(o) { console.log( "any object" ); });
 print(3);
+
+print(undefined);
+print.method(undefined, function(_) { console.log("undefineded"); });
+print(undefined);

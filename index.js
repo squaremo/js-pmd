@@ -114,6 +114,7 @@ dispatch(selector, args, n) {
         var TRUE_TABLE = {};
         var FALSE_TABLE = {};
         var NULL_TABLE = {};
+        var UNDEFINED_TABLE = {};
 
         function get_table(value, create) {
             switch (typeof value) {
@@ -133,6 +134,8 @@ dispatch(selector, args, n) {
                 }
             case 'boolean':
                 return value && TRUE_TABLE || FALSE_TABLE;
+            case 'undefined':
+                return UNDEFINED_TABLE;
             default: // Object, Array, RegExp, Function can all have
                      // arbitrary values
                 if (value === null) {
