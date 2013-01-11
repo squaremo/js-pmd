@@ -91,10 +91,21 @@ dispatch(selector, args, n) {
     }
 
     // Object.getPrototypeOf will fail for a ground type, so we
-    // promote everything to an object.
-    //    val.__proto__ === Object(val).__proto__
-    var delegate = (Object.getPrototypeOf) ?
-        function (v) { return Object.getPrototypeOf(Object(v)); } : function(val) { return val.__proto__; };
+    // promote everything to an object, except undefined which we want
+    // to not be a subtype of object.
+    var delegate;
+    if (Object.getPrototypeOf) {
+        delegate = function (val) {
+            return (val === undefined) ? null :
+                Object.getPrototypeOf(Object(val));
+        };
+    }
+    else {
+        delegate = function(val) {
+            return (val === undefined) ? null :
+                Object(val).__proto__;
+        };
+    }
 
     function procedure(name) { // name is just for easier debugging if
                                // we have to inspect roles tables
@@ -133,7 +144,7 @@ dispatch(selector, args, n) {
                     return (create) ? NUMBERS[value] = {} : false;
                 }
             case 'boolean':
-                return value && TRUE_TABLE || FALSE_TABLE;
+                return (value) ? TRUE_TABLE : FALSE_TABLE;
             case 'undefined':
                 return UNDEFINED_TABLE;
             default: // Object, Array, RegExp, Function can all have
@@ -142,11 +153,15 @@ dispatch(selector, args, n) {
                     return NULL_TABLE;
                 }
                 var hasRoles = value.hasOwnProperty('__roles__');
-                if (create && !hasRoles) {
+                if (hasRoles) {
+                    return value.__roles__;
+                }
+                else if (create) {
                     Object.defineProperty(value, '__roles__',
                                           {value: {}, enumerable: false});
+                    return value.__roles__;
                 }
-                return value.__roles__;
+                else return undefined;
             }
         }
 
@@ -167,8 +182,8 @@ dispatch(selector, args, n) {
 
         function lookup(args) {
             var ranks = {};
-            // %% since there's only have one delegate at any point,
-            // %% this could be a register.
+            // %% since there's only one delegate considered at any
+            // %% point, this could be a register.
             var stack = [];
             var mostspecificmethod = false;
 
@@ -183,7 +198,8 @@ dispatch(selector, args, n) {
                     //console.log({ARG: arg});
                     var methods;
                     var table = get_table(arg, false);
-                    if (table && (methods = table[rolename])) {
+                    if (table !== undefined &&
+                        (methods = table[rolename])) {
                         methods.forEach(function (methodname) {
                             var rank;
                             if (!(rank = ranks[methodname])) {
@@ -194,9 +210,8 @@ dispatch(selector, args, n) {
                             }
                             rank.vector[i] = position;
                             rank.filled++;
+                            // %%% Only check if last argument?
                             if (rank.filled === len &&
-                                // NB above also checks the method has
-                                // the correct number of args
                                 (!mostspecificmethod ||
                                  rank.vector < ranks[mostspecificmethod].vector)) {
                                 mostspecificmethod = methodname;
@@ -209,14 +224,14 @@ dispatch(selector, args, n) {
                     position++;
                 }
             }
-            //console.log(ranks);
+            // console.log(ranks);
             return METHODS[mostspecificmethod];
         }
         
         var dispatch = function() {
             var method = lookup(arguments);
             if (method) { return method.apply(method, arguments); }
-            else throw "No applicable method found";
+            else throw new TypeError("No applicable method found");
         }
         dispatch.method = method;
         return dispatch;
