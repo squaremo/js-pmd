@@ -10,9 +10,9 @@
 // compares the applicable method bodies. The rank function and ≺
 // operator together implement this comparison operator.
 
-// We then deﬁne the applic set of methods as those methods for which
-// every argument either contains a satisfactory role for the method,
-// or delegates to an object with such a role. A role here is
+// We then deﬁne the applicable set of methods as those methods for
+// which every argument either contains a satisfactory role for the
+// method, or delegates to an object with such a role. A role here is
 // satisfactory if index of the method argument on which it is found
 // matches that in the role, and the method selector matches that in
 // the role as well. This deﬁnition relies on the delegates function,
@@ -73,7 +73,8 @@ dispatch(selector, args, n) {
 // implicitly use its prototype -- which _will_ in general work as
 // expected.
 
-// `Object.prototype` is the root of the prototype chain; its [[prototype]] is null.
+// `Object.prototype` is the root of the prototype chain; its
+// [[prototype]] is null.
 
 // We keep a table of role -> methods at each object. While
 // dispatching, we have to keep track of the rank vector of each
@@ -182,47 +183,48 @@ dispatch(selector, args, n) {
 
         function lookup(args) {
             var ranks = {};
-            // %% since there's only one delegate considered at any
-            // %% point, this could be a register.
-            var stack = [];
             var mostspecificmethod = false;
+            var mostspecificrank = [];
 
             for (var i=0, len = args.length; i < len; i++) {
                 var position = 0;
                 var rolename = selector + ':' + i;
+                var newranks = {};
 
-                stack.push(args[i]);
+                var arg = args[i];
 
-                while (stack.length > 0) {
-                    var arg = stack.pop();
+                do {
                     //console.log({ARG: arg});
                     var methods;
                     var table = get_table(arg, false);
                     if (table !== undefined &&
                         (methods = table[rolename])) {
+
                         methods.forEach(function (methodname) {
-                            var rank;
-                            if (!(rank = ranks[methodname])) {
-                                rank = ranks[methodname] = {
-                                    filled: 0,
-                                    vector: []
-                                };
+                            // If this method hasn't qualified for
+                            // previous arguments, it can't be
+                            // applicable.
+                            if (i > 0 && !(methodname in ranks)) {
+                                return; // i.e., continue
                             }
-                            rank.vector[i] = position;
-                            rank.filled++;
-                            // %%% Only check if last argument?
-                            if (rank.filled === len &&
+
+                            var rank = (i > 0) ? ranks[methodname] : [];
+
+                            newranks[methodname] = rank;
+                            rank[i] = position;
+
+                            if (i === len - 1 &&
                                 (!mostspecificmethod ||
-                                 rank.vector < ranks[mostspecificmethod].vector)) {
+                                 rank < newranks[mostspecificmethod])) {
                                 mostspecificmethod = methodname;
                             }
                         });
                     }
 
-                    var proto = delegate(arg);
-                    if (proto !== null) stack.push(proto);
+                    arg = delegate(arg);
                     position++;
-                }
+                } while (arg !== null);
+                ranks = newranks;
             }
             // console.log(ranks);
             return METHODS[mostspecificmethod];
